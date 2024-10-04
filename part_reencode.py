@@ -1,3 +1,4 @@
+# Original by Kukoc@Magic-Raws https://skyeysnow.com/forum.php?mod=viewthread&tid=41638
 import argparse
 import os
 import sys
