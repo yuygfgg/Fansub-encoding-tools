@@ -51,7 +51,7 @@ Once the script is running, it enters an interactive mode where you can input co
 1. **Start the script:**
 
    ```bash
-   python generate_cmp_en.py raw.mkv encoded.mkv
+   python generate_cmp.py raw.mkv encoded.mkv
    ```
 
 2. **Set a head or tail offset (optional):**
