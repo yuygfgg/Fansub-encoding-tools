@@ -97,7 +97,6 @@ def SEM(
             else:
                 command = f'VSPipe "{fp_vpy}" -c y4m -s {Iframe1} -e {Iframe2 - 1} - | {encoder_command} -o "_newseg{ext}" -'
 
-            # 打印完整的 VSPipe+编码器命令
             print(f"Running command: {command}")
             os.system(command)
 
