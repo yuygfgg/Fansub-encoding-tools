@@ -6,7 +6,7 @@ Some useful scripts for encoders of fansub groups
 
 #### Overview
 
-`generate_cmp_en.py` is a Python script designed to compare frames from a raw video and an encoded video. It caches the frame types (I/B/P frames) for both videos, processes specific or random frames, and adds text annotations to the frames before saving them as images.
+`generate_cmp.py` is a Python script designed to compare frames from a raw video and an encoded video. It caches the frame types (I/B/P frames) for both videos, processes specific or random frames, and adds text annotations to the frames before saving them as images.
 
 #### Dependencies
 
