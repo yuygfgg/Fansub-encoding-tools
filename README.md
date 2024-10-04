@@ -186,7 +186,7 @@ Example error messages:
 
 Upon successful completion, each folder will contain an updated `.mkv` file, where the video, audio, subtitles, chapters, and fonts have been merged.
 
-
+---
 
 ## part_reencode.py
 
