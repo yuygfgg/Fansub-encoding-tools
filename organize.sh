@@ -105,8 +105,8 @@ for dir in $folders; do
     mkvmerge -o "$dir/new_$(basename "$mkv_file")" \
         --language 0:und "$extract_dir/video.hevc" \
         --language 0:ja "$extract_dir/audio.aac" \
-        --language 0:zh-ch --track-name 0:"Chinese-Japanese Bilingual" --default-track 0:yes "$chs_ass" \
-        --language 0:zh-tw --track-name 0:"Traditional Chinese-Japanese Bilingual" --default-track 0:no "$cht_ass" \
+        --language 0:zh-ch --track-name 0:"简日双语" --default-track 0:yes "$chs_ass" \
+        --language 0:zh-tw --track-name 0:"繁日双语" --default-track 0:no "$cht_ass" \
         --chapters "$txt_file" \
         "${attachments[@]}"
 
