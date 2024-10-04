@@ -182,7 +182,7 @@ def main():
     global head_offset, tail_offset
 
     if len(sys.argv) != 3:
-        print("Usage: python generate_cmp_en.py raw.mkv encoded.mkv")
+        print("Usage: python generate_cmp.py raw.mkv encoded.mkv")
         sys.exit(1)
 
     raw_video = sys.argv[1]
