@@ -39,8 +39,8 @@ Once the script is running, it enters an interactive mode where you can input co
 **Commands:**
 
 - **Frame number (e.g., `10`)**: Same as `encoded n`.
-- **`raw n`**: Processes the frame number n (n is the frame number is raw video, and offset number will be applied when extracting encoded frame).
-- **`encoded n`**: Processes the frame number n (n is the frame number is encoded video, and offset number will be applied when extracting raw frame).
+- **`raw n`**: Processes the frame number n (n is the frame number in raw video, and offset number will be applied when extracting encoded frame).
+- **`encoded n`**: Processes the frame number n (n is the frame number in encoded video, and offset number will be applied when extracting raw frame).
 - **`random n`**: Randomly selects `n` frames and processes them.
 - **`set head n`**: Sets the first frame of the encoded video to correspond to frame `n` of the raw video.
 - **`set tail n`**: Sets the last frame of the encoded video to correspond to frame `n` of the raw video.
