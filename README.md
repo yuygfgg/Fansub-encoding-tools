@@ -25,7 +25,7 @@ pip install opencv-python av
 #### Command-Line Usage
 
 ```bash
-python generate_cmp_en.py raw.mkv encoded.mkv
+python generate_cmp.py raw.mkv encoded.mkv
 ```
 
 Where:
