@@ -31,7 +31,7 @@ python generate_cmp_en.py raw.mkv encoded.mkv
 Where:
 - `raw.mkv`: The raw video file.
 - `encoded.mkv`: The encoded video file to compare against the raw video.
-- 
+
 #### Interactive Mode
 
 Once the script is running, it enters an interactive mode where you can input commands to process frames or configure the comparison.
