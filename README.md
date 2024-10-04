@@ -93,7 +93,7 @@ Processed frames are saved as PNG files in the `output_frames` directory. The fi
 `organize.sh` is a Bash script designed to handle and organize MKV files within a folder structure. It performs the following tasks:
 - Extracts video and audio tracks from the MKV file.
 - Merges the video, audio, subtitles, chapters, and font attachments back into a new MKV file.
-- 
+
 Basicly, I use this script to produce collections when a season ends.
 
 #### Prerequisites
