@@ -38,9 +38,9 @@ Once the script is running, it enters an interactive mode where you can input co
 
 **Commands:**
 
-- **Frame number (e.g., `10`)**: Displays and processes the specified frame from the encoded video.
-- **`raw n`**: Processes the frame from the raw video corresponding to frame number `n`.
-- **`encoded n`**: Processes the frame from the encoded video corresponding to frame number `n`.
+- **Frame number (e.g., `10`)**: Same as `encoded n`.
+- **`raw n`**: Processes the frame number n (n is the frame number is raw video, and offset number will be applied when extracting encoded frame).
+- **`encoded n`**: Processes the frame number n (n is the frame number is encoded video, and offset number will be applied when extracting raw frame).
 - **`random n`**: Randomly selects `n` frames and processes them.
 - **`set head n`**: Sets the first frame of the encoded video to correspond to frame `n` of the raw video.
 - **`set tail n`**: Sets the last frame of the encoded video to correspond to frame `n` of the raw video.
@@ -94,9 +94,7 @@ Processed frames are saved as PNG files in the `output_frames` directory. The fi
 - Extracts video and audio tracks from the MKV file.
 - Merges the video, audio, subtitles, chapters, and font attachments back into a new MKV file.
 - 
-Basicly, I use this script to produce collections when a season finishes.
-
----
+Basicly, I use this script to produce collections when a season ends.
 
 #### Prerequisites
 
@@ -117,7 +115,6 @@ Install them using your package manager:
   brew install mkvtoolnix
   ```
 
----
 
 #### Script Workflow
 
@@ -127,7 +124,6 @@ The script processes multiple folders (in the format `E01`, `E02`, ..., `E12`) w
 - 1 `.txt` file (chapter information).
 - 1 `subsetted_fonts` directory containing font files.
 
----
 
 #### Folder Structure Example
 
@@ -144,8 +140,6 @@ E01/
     ├── some_font.ttf
     └── another_font.otf
 ```
-
----
 
 #### Running the Script
 
@@ -164,8 +158,6 @@ The script will process each folder sequentially, ensuring that the required fil
 2. Attaches the subtitles, chapters, and fonts.
 3. Merges everything into a new `.mkv` file and replaces the original.
 
----
-
 #### Error Handling
 
 The script will terminate with an error message if:
@@ -181,8 +173,6 @@ Example error messages:
   ```bash
   Error: The file structure in folder E01 is incorrect.
   ```
-
----
 
 #### Output
 
