@@ -231,7 +231,7 @@ python part_reencode.py <input> <segments> <x26x_param> <vapoursynth_script> <ou
 
 - `input`: **Required**. The path to the input video file. Supported formats include `.hevc`, `.avc`, `.265`, `.264`.
 - `segments`: **Required**. A string representation of the list of segments to process, e.g., `[[0, 100], [200, 300]]`, representing frame ranges.
-- `x26x_param`: **Required**. Encoding parameters for `x264` or `x265` encoders. For example, `--y4m  --preset slow --crf 18`. ** note that `--y4m ` should always be added, or the script will crash or output garbage**
+- `x26x_param`: **Required**. Encoding parameters for `x264` or `x265` encoders. For example, `--y4m  --preset slow --crf 18`. **Note that `--y4m ` should always be added, or the script will crash or output garbage.**
 - `vapoursynth_script`: **Required**. Path to the VapourSynth script used for video reencoding part. The script should output the save number of frames as the raw video.
 - `output`: **Required**. The path to the output video file.
 - `--encoder`: **Optional**. Specifies whether to use `x264` or `x265` for encoding. The default is `x265`.
