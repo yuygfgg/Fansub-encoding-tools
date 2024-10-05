@@ -7,7 +7,7 @@ generate_cmp.py - An interactive comparism image generator, with frame number of
 
 organize.sh - A file organizor, useful when you have 12 (or even worse, 24) videos, each 2 subtitles and tens of subsetted fonts (hundereds in total) to deal with.
 
-part_reencode.py - A video partial re-encoding. It re-encodes only part of the video using the specified vapoursynth script and encoder params, leaving other part untouched.
+part_reencode.py - A video partial re-encoder. It re-encodes only part of the video using the specified vapoursynth script and encoder params, leaving other part untouched.
 ```
 
 ## generate_cmp.py
