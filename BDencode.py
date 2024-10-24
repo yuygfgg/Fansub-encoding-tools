@@ -151,7 +151,6 @@ class EncodingProject:
                     self._generate_episode_tasks(episode_num)
                 except Exception as e:
                     print(f"Error processing episode {episode_num}: {str(e)}")
-                    # 可以选择继续处理其他集数，或者抛出异常终止整个过程
                     raise
 
         except Exception as e:
@@ -417,11 +416,11 @@ class EncodingProject:
         # 确保结果目录存在并合并所有移动命令
         return (
             f'mkdir -p "{str(result_dir)}" && '
-            f'mv "{str(episode_dir / "final_with_subs.mkv")}" '
+            f'cp "{str(episode_dir / "final_with_subs.mkv")}" '
             f'"{str(result_dir / f"E{episode_num.zfill(2)}_complete.mkv")}" && '
-            f'mv "{str(episode_dir / "final_chs.mkv")}" '
+            f'cp "{str(episode_dir / "final_chs.mkv")}" '
             f'"{str(result_dir / f"E{episode_num.zfill(2)}_chs.mkv")}" && '
-            f'mv "{str(episode_dir / "final_cht.mkv")}" '
+            f'cp "{str(episode_dir / "final_cht.mkv")}" '
             f'"{str(result_dir / f"E{episode_num.zfill(2)}_cht.mkv")}"'
         )
 
