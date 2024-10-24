@@ -217,8 +217,8 @@ class EncodingProject:
         fonts_dir = episode_dir / "subsetted_fonts"
 
         # 查找字幕文件
-        chs_sub = list(episode_dir.glob("*.chs_jpn.rename.ass"))[0]
-        cht_sub = list(episode_dir.glob("*.cht_jpn.rename.ass"))[0]
+        chs_sub = list(episode_dir.glob("*.chs_jpn.ass"))[0]
+        cht_sub = list(episode_dir.glob("*.cht_jpn.ass"))[0]
 
         mux_command = (
             f'mkdir -p "{str(temp_dir)}" && '
