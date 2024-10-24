@@ -538,7 +538,7 @@ sub.set_output(0)
                 f"hardsub_{lang}_merge",
                 f'mkvmerge -o "{str(episode_dir / f"final_{lang}.mkv")}" ' +
                 f'--language 0:und "{str(episode_dir / f"{lang}.mkv")}" ' +
-                f'--language 0:ja "{str(episode_dir / f"audio{episode_num}.aac")}"',
+                f'--language 0:ja "{str(episode_dir / f"audio{episode_num}.aac")}" ' +
                 f'--chapters "{str(list(episode_dir.glob("*.txt"))[0])}"',
                 prerequisites=[f"hardsub_{lang}"]
             )
