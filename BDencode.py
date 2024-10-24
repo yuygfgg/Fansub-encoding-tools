@@ -1,7 +1,6 @@
 import shlex
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import json
 import os
 import re
 import subprocess
@@ -28,23 +27,6 @@ class EncodingTask:
         self.custom_params = {}
         self.paused = False
         self.work_dir = work_dir
-
-    def to_dict(self):
-        return {
-            "episode_num": self.episode_num,
-            "task_type": self.task_type,
-            "command": self.command,
-            "prerequisites": self.prerequisites,
-            "status": self.status,
-            "custom_params": self.custom_params
-        }
-
-    @classmethod
-    def from_dict(cls, data):
-        task = cls(data["episode_num"], data["task_type"], data["command"], data["prerequisites"])
-        task.status = data["status"]
-        task.custom_params = data["custom_params"]
-        return task
     
     def is_completed(self, root_path):
         if self.status == "stopped":
@@ -178,9 +160,17 @@ class EncodingProject:
 
     def _setup_episode_files(self, episode_num, m2ts_file, ass_pattern, chapter_pattern):
         episode_dir = self.root_path / f"E{episode_num.zfill(2)}"
+        target_m2ts = episode_dir / "source.m2ts"
 
-        # Copy m2ts
-        shutil.copy2(m2ts_file, episode_dir / "source.m2ts")
+        if target_m2ts.exists():
+            if target_m2ts.stat().st_size == m2ts_file.stat().st_size:
+                print(f"M2TS file already exists : {target_m2ts}, skip copying")
+            else:
+                print(f"M2TS file exists but size differs, copying: {m2ts_file}")
+                shutil.copy2(m2ts_file, target_m2ts)
+        else:
+            print(f"M2TS file does not exist, copying: {m2ts_file}")
+            shutil.copy2(m2ts_file, target_m2ts)
 
         # Copy subtitles
         for ass_file in self.root_path.glob("subtitles/*.ass"):
@@ -290,48 +280,7 @@ class EncodingProject:
                 self.output_text.insert(tk.END, f"任务执行失败: {str(e)}\n")
                 self.output_text.see(tk.END)
 
-    def _execute_command_sequence(self, task):
-        """执行命令序列"""
-        for cmd in task.command:
-            try:
-                # 在命令执行前输出信息
-                if hasattr(self, 'output_text'):
-                    self.output_text.insert(tk.END, f"\nExecuting command: {cmd}\n")
-                    self.output_text.see(tk.END)
-
-                print(task.work_dir)
-                # 执行命令
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                    shell=True,
-                    cwd=task.work_dir  # 显式设置工作目录
-                )
-
-                # 读取并输出命令执行结果
-                for line in process.stdout:
-                    line = line.strip()
-                    if line and hasattr(self, 'output_text'):
-                        self.output_text.insert(tk.END, f"{line}\n")
-                        self.output_text.see(tk.END)
-
-                # 等待命令完成
-                return_code = process.wait()
-                if return_code != 0:
-                    raise subprocess.CalledProcessError(return_code, cmd)
-
-            except Exception as e:
-                if hasattr(self, 'output_text'):
-                    self.output_text.insert(tk.END, f"命令执行失败: {str(e)}\n")
-                    self.output_text.see(tk.END)
-                return None
-
-        return process  # 返回最后一个进程
-
     def _monitor_output(self, task, process):
-        """监控进程输出"""
         try:
             while True:
                 line = process.stdout.readline()
