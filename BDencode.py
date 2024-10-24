@@ -402,9 +402,8 @@ class EncodingProject:
             episode_num,
             "audio",
             f'ffmpeg -i "{str(episode_dir / "source.m2ts")}" -c:a pcm_s24le "{str(episode_dir / f"audio{episode_num}.wav")}" && '
-            f'flaccl "{str(episode_dir / f"audio{episode_num}.wav")}" -o "{str(episode_dir / f"output{episode_num}.flac")}" && '
-            f'ffmpeg -i "{str(episode_dir / f"audio{episode_num}.wav")}" "{str(episode_dir / f"audio{episode_num}.aac")}"',
-            prerequisites=["subtitle_process"],
+            f'flaldf "{str(episode_dir / f"audio{episode_num}.wav")}" -o "{str(episode_dir / f"output{episode_num}.flac")}" && '
+            f'ffmpeg -i "{str(episode_dir / f"audio{episode_num}.wav")}" -c:a aac_at  -global_quality:a 14 -aac_at_mode 2 -b:a 320k "{str(episode_dir / f"audio{episode_num}.aac")}"',
             work_dir=str(episode_dir)
         )
         tasks.append(audio_task)
@@ -414,7 +413,6 @@ class EncodingProject:
             episode_num,
             "video",
             None,  # 命令先设为None，运行时再构造
-            prerequisites=["subtitle_process"],
             work_dir=str(episode_dir)
         )
         video_task.custom_params = {
@@ -740,7 +738,7 @@ class EncodingGUI:
                     while True:
                         output = output_queue.get_nowait()
                         self._update_task_output(task, output)
-                except QueueEmpty:  # 使用导入的QueueEmpty
+                except QueueEmpty:
                     pass
 
                 if task.process and task.process.poll() is not None:
