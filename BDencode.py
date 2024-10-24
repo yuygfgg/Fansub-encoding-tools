@@ -116,20 +116,20 @@ class EncodingProject:
             "--range=limited",
             "--hist-scenecut",
             "--no-sao",
-            "-b=9",
-            "--qcomp=0.65",
-            "--qg-size=8",
-            "--subme=5",
-            "--tu-intra-depth=4",
-            "--tu-inter-depth=4",
-            "--no-strong-intra-smoothing",
-            "--ctu=32",
-            "--cbqpoffs=-2",
-            "--crqpoffs=-2",
-            "--limit-tu=0",
-            "--aq-mode=3",
-            "--aq-strength=0.7",
-            "--merange=32",
+            # "-b=9",
+            # "--qcomp=0.65",
+            # "--qg-size=8",
+            # "--subme=5",
+            # "--tu-intra-depth=4",
+            # "--tu-inter-depth=4",
+            # "--no-strong-intra-smoothing",
+            # "--ctu=32",
+            # "--cbqpoffs=-2",
+            # "--crqpoffs=-2",
+            # "--limit-tu=0",
+            # "--aq-mode=3",
+            # "--aq-strength=0.7",
+            # "--merange=32",
             "-D=10"
         ]
 
@@ -216,10 +216,7 @@ class EncodingProject:
         temp_dir = episode_dir / "temp"
         fonts_dir = episode_dir / "subsetted_fonts"
 
-        # 查找字幕文件
-        chs_sub = list(episode_dir.glob("*.chs_jpn.ass"))[0]
-        cht_sub = list(episode_dir.glob("*.cht_jpn.ass"))[0]
-
+        # 使用命令去动态查找字幕文件
         mux_command = (
             f'mkdir -p "{str(temp_dir)}" && '
             f'mkvextract "{str(episode_dir / "final_output.mkv")}" tracks '
@@ -229,9 +226,9 @@ class EncodingProject:
             f'--language 0:und "{str(temp_dir / "video.hevc")}" '
             f'--language 0:ja "{str(temp_dir / "audio.flac")}" '
             f'--language 0:zh-cn --track-name 0:简日双语 '
-            f'--default-track 0:yes "{str(chs_sub)}" '
+            f'--default-track 0:yes "$(ls "{str(episode_dir)}"/*.chs_jpn.rename.ass)" '
             f'--language 0:zh-tw --track-name 0:繁日双语 '
-            f'--default-track 0:no "{str(cht_sub)}" '
+            f'--default-track 0:no "$(ls "{str(episode_dir)}"/*.cht_jpn.rename.ass)" '
             f'--chapters "{str(list(episode_dir.glob("*.txt"))[0])}" && '
             f'find "{str(fonts_dir)}" -type f -name "*.ttf" '
             f'-exec mkvpropedit "{str(episode_dir / "final_with_subs.mkv")}" '
@@ -246,7 +243,7 @@ class EncodingProject:
             episode_num,
             "mux",
             mux_command,
-            prerequisites=["merge", "subtitle_process"],
+            prerequisites=["merge", "subtitle_process"],  # 确保字幕处理完成后再执行
             work_dir=str(episode_dir)
         )
 
@@ -373,7 +370,7 @@ class EncodingProject:
         subtitle_command = "assfonts"
         for path in subtitle_paths:
             subtitle_command += f' -i "{path}"'
-        subtitle_command += f' -f "{str(self.root_path / "fonts")}" -r -c'
+        subtitle_command += f' -f "{str(self.root_path / "fonts")}" -r -c && mv *.chs_jpn.rename.ass {episode_num.zfill(2)}.chs_jpn.rename.ass && mv *.cht_jpn.rename.ass {episode_num.zfill(2)}.cht_jpn.rename.ass'
 
         # 创建所有任务
         tasks = []
@@ -542,6 +539,7 @@ sub.set_output(0)
                 f'mkvmerge -o "{str(episode_dir / f"final_{lang}.mkv")}" ' +
                 f'--language 0:und "{str(episode_dir / f"{lang}.mkv")}" ' +
                 f'--language 0:ja "{str(episode_dir / f"audio{episode_num}.aac")}"',
+                f'--chapters "{str(list(episode_dir.glob("*.txt"))[0])}"',
                 prerequisites=[f"hardsub_{lang}"]
             )
             tasks.append(merge_task)
@@ -869,7 +867,8 @@ class EncodingGUI:
             return
 
         # 如果是编码任务，在运行时构造命令
-        if task.task_type == "video" or "hardsub" in task.task_type:
+        if task.task_type == "video" or (("hardsub_" in task.task_type) and ("merge" not in task.task_type)):
+            # 只有视频编码任务和硬字幕编码任务（非合并）需要构造编码命令
             params = (self.project.current_hardsub_x265_params 
                     if task.custom_params.get("is_hardsub") 
                     else self.project.current_normal_x265_params)
@@ -884,10 +883,6 @@ class EncodingGUI:
                 )
             else:
                 task.command = f'{x265_command} --input="{task.custom_params["input_vpy"]}" -o "{task.custom_params["output_mkv"]}"'
-        print(task.command)
-        task.status = "running"
-        task.start_time = datetime.now()
-        task.output = []
 
         task.status = "running"
         task.start_time = datetime.now()
