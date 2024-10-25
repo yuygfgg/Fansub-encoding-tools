@@ -90,6 +90,8 @@ class EncodingProject:
         self.current_hardsub_x265_params = self.default_hardsub_x265_params.copy()
         self.episode_params = {}
         
+        self.use_move_mode = False
+        
     def get_episode_params(self, episode_num, is_hardsub=False):
         if episode_num not in self.episode_params:
             self.episode_params[episode_num] = {
@@ -174,21 +176,26 @@ class EncodingProject:
 
         if target_m2ts.exists():
             if target_m2ts.stat().st_size == m2ts_file.stat().st_size:
-                print(f"M2TS file already exists : {target_m2ts}, skip copying")
+                print(f"M2TS file already exists : {target_m2ts}, skip operation")
             else:
-                print(f"M2TS file exists but size differs, copying: {m2ts_file}")
-                shutil.copy2(m2ts_file, target_m2ts)
+                print(f"M2TS file exists but size differs, {'moving' if self.use_move_mode else 'copying'}: {m2ts_file}")
+                target_m2ts.unlink()
+                if self.use_move_mode:
+                    shutil.move(str(m2ts_file), str(target_m2ts))
+                else:
+                    shutil.copy2(str(m2ts_file), str(target_m2ts))
         else:
-            print(f"M2TS file does not exist, copying: {m2ts_file}")
-            shutil.copy2(m2ts_file, target_m2ts)
+            print(f"M2TS file does not exist, {'moving' if self.use_move_mode else 'copying'}: {m2ts_file}")
+            if self.use_move_mode:
+                shutil.move(str(m2ts_file), str(target_m2ts))
+            else:
+                shutil.copy2(str(m2ts_file), str(target_m2ts))
 
-        # Copy subtitles
         for ass_file in self.root_path.glob("subtitles/*.ass"):
             if re.match(ass_pattern, ass_file.name):
                 if str(episode_num) in ass_file.name:
                     shutil.copy2(ass_file, episode_dir)
 
-        # Copy chapters
         for chapter_file in self.root_path.glob("chapters/*.txt"):
             if re.match(chapter_pattern, chapter_file.name):
                 if str(episode_num) in chapter_file.name:
@@ -409,6 +416,15 @@ class EncodingProject:
             work_dir=str(episode_dir)
         )
         tasks.append(organize_task)
+        
+        cleanup_task = EncodingTask(
+            episode_num,
+            "cleanup",
+            f'rm -f "{str(episode_dir / "source.m2ts")}"',
+            prerequisites=["organize"],
+            work_dir=str(episode_dir)
+        )
+        tasks.append(cleanup_task)
 
         # 检查每个任务的完成状态
         for task in tasks:
@@ -852,6 +868,13 @@ class EncodingGUI:
         dialog = tk.Toplevel(self.root)
         dialog.title("File Patterns")
         dialog.grab_set()
+        
+        # 添加移动模式选项
+        move_var = tk.BooleanVar(value=False)
+        move_frame = ttk.Frame(dialog)
+        move_frame.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Checkbutton(move_frame, text="使用移动模式", 
+                        variable=move_var).pack(side=tk.LEFT)
 
         patterns = {}
         for name in ["m2ts", "ass", "chapter"]:
@@ -863,13 +886,23 @@ class EncodingGUI:
             patterns[name] = var
 
         def confirm():
+            if move_var.get():
+                if not messagebox.askyesno("确认", 
+                    "使用移动模式将会移动原始m2ts文件而不是复制。\n" + 
+                    "这将节省磁盘空间，但会改变原始文件的位置。\n" + 
+                    "确定要继续吗？"):
+                    return
+                self.project.use_move_mode = True
+            else:
+                self.project.use_move_mode = False
+                
             pattern_dict = {k: v.get() for k, v in patterns.items()}
             self.project.generate_tasks(pattern_dict)
             self._refresh_task_tree()
             self._update_episode_list()
             dialog.destroy()
 
-        ttk.Button(dialog, text="Confirm", command=confirm).pack(pady=10)
+        ttk.Button(dialog, text="确认", command=confirm).pack(pady=10)
 
     def _refresh_task_tree(self):
         # 保存当前选中的项目的值
