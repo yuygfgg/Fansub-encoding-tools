@@ -102,15 +102,18 @@ class EncodingProject:
         return self.episode_params[episode_num][param_type]
     
     def generate_x265_command(self, params):
+        try:
+            crf = float(params['crf'])  # 将 crf 转换为数值以进行比较
+        except (ValueError, TypeError):
+            crf = 16  # 如果转换失败，使用默认值
+        
         base_params = [
             "--no-open-gop",
-            "--deblock=-1:-1",
             "--colorprim=bt709",
             "--colormatrix=bt709",
             "--transfer=bt709",
             "--range=limited",
             "--hist-scenecut",
-            "--no-sao",
             "-b=9",
             "--qcomp=0.65",
             "--qg-size=8",
@@ -128,12 +131,30 @@ class EncodingProject:
             "-D=10"
         ]
 
+        # 根据 CRF 值动态调整参数
+        if crf <= 18:
+            base_params.extend([
+                "--no-sao",
+                "--deblock=-1:-1"
+            ])
+        elif 18 < crf <= 21:
+            base_params.extend([
+                "--limit-sao",
+                "--deblock=0:-1"
+            ])
+        else:  # crf > 21
+            base_params.extend([
+                "--sao",
+                "--deblock=0:0"
+            ])
+
         cmd = ["x265"]
         cmd.extend([f"--crf={params['crf']}"])
         if params['tune'] and params['tune'].strip():
             cmd.extend([f"--tune={params['tune']}"])
         cmd.extend([f"--preset={params['preset']}"])
         cmd.extend(base_params)
+
         return cmd
 
     def setup_project(self, root_path):
