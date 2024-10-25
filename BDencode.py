@@ -88,6 +88,17 @@ class EncodingProject:
         }
         self.current_normal_x265_params = self.default_normal_x265_params.copy()
         self.current_hardsub_x265_params = self.default_hardsub_x265_params.copy()
+        self.episode_params = {}
+        
+    def get_episode_params(self, episode_num, is_hardsub=False):
+        if episode_num not in self.episode_params:
+            self.episode_params[episode_num] = {
+                "normal": self.default_normal_x265_params.copy(),
+                "hardsub": self.default_hardsub_x265_params.copy()
+            }
+        param_type = "hardsub" if is_hardsub else "normal"
+        return self.episode_params[episode_num][param_type]
+    
     def generate_x265_command(self, params):
         base_params = [
             "--no-open-gop",
@@ -592,6 +603,67 @@ class EncodingGUI:
         # Add apply button
         ttk.Button(params_frame, text="应用参数设置",
                 command=self._apply_params).pack(pady=5)
+        
+        # Episode-specific parameters
+        episode_params_frame = ttk.LabelFrame(params_frame, text="单集编码参数")
+        episode_params_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Episode selection
+        episode_select_frame = ttk.Frame(episode_params_frame)
+        episode_select_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Label(episode_select_frame, text="选择集数:").pack(side=tk.LEFT)
+        self.episode_select = ttk.Combobox(episode_select_frame, state="readonly")
+        self.episode_select.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.episode_select.bind('<<ComboboxSelected>>', self._update_episode_params_display)
+        
+        # 初始状态设置为空列表
+        self.episode_select['values'] = []
+        
+        # 添加一个刷新按钮
+        ttk.Button(episode_select_frame, text="刷新列表", 
+              command=self._update_episode_list).pack(side=tk.LEFT, padx=5)
+
+        # Episode normal parameters
+        self.episode_normal_params_frame = ttk.LabelFrame(episode_params_frame, text="普通编码（内封）")
+        self.episode_normal_params_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.episode_normal_param_vars = {}
+        param_labels = {
+            "crf": "CRF值",
+            "tune": "调优模式",
+            "preset": "预设速度"
+        }
+
+        for param in ["crf", "tune", "preset"]:
+            frame = ttk.Frame(self.episode_normal_params_frame)
+            frame.pack(fill=tk.X, padx=5, pady=2)
+            ttk.Label(frame, text=param_labels[param], width=10).pack(side=tk.LEFT)
+            var = tk.StringVar()
+            entry = ttk.Entry(frame, textvariable=var)
+            entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.episode_normal_param_vars[param] = var
+
+        # Episode hardsub parameters
+        self.episode_hardsub_params_frame = ttk.LabelFrame(episode_params_frame, text="硬字幕编码（内嵌）")
+        self.episode_hardsub_params_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.episode_hardsub_param_vars = {}
+        for param in ["crf", "tune", "preset"]:
+            frame = ttk.Frame(self.episode_hardsub_params_frame)
+            frame.pack(fill=tk.X, padx=5, pady=2)
+            ttk.Label(frame, text=param_labels[param], width=10).pack(side=tk.LEFT)
+            var = tk.StringVar()
+            entry = ttk.Entry(frame, textvariable=var)
+            entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.episode_hardsub_param_vars[param] = var
+
+        # Episode parameter control buttons
+        episode_btn_frame = ttk.Frame(episode_params_frame)
+        episode_btn_frame.pack(fill=tk.X, pady=5)
+        ttk.Button(episode_btn_frame, text="应用到当前集数",
+                  command=self._apply_episode_params).pack(side=tk.LEFT, padx=5)
+        ttk.Button(episode_btn_frame, text="重置当前集数",
+                  command=self._reset_episode_params).pack(side=tk.LEFT, padx=5)
 
         # Task control buttons
         button_frame = ttk.LabelFrame(control_frame, text="任务控制")
@@ -642,6 +714,71 @@ class EncodingGUI:
         self.status_var.set("就绪")
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+    def _update_episode_list(self):
+        if not hasattr(self.project, 'tasks') or not self.project.tasks:
+            self.episode_select['values'] = []
+            return
+
+        episodes = sorted(set(task.episode_num for task in self.project.tasks))
+        if not episodes:
+            self.episode_select['values'] = []
+            return
+
+        episode_values = [f"E{ep.zfill(2)}" for ep in episodes]
+        self.episode_select['values'] = episode_values
+        
+        if episode_values:
+            self.episode_select.set(episode_values[0])
+            self._update_episode_params_display()
+
+    def _update_episode_params_display(self, event=None):
+        if not self.episode_select.get():
+            return
+            
+        episode_num = self.episode_select.get()[1:]  # Remove 'E' prefix
+        normal_params = self.project.get_episode_params(episode_num, False)
+        hardsub_params = self.project.get_episode_params(episode_num, True)
+
+        for param, var in self.episode_normal_param_vars.items():
+            var.set(str(normal_params[param]))
+        for param, var in self.episode_hardsub_param_vars.items():
+            var.set(str(hardsub_params[param]))
+
+    def _apply_episode_params(self):
+        if not self.episode_select.get():
+            return
+            
+        episode_num = self.episode_select.get()[1:]  # Remove 'E' prefix
+        
+        # Update normal parameters
+        normal_params = {}
+        for param, var in self.episode_normal_param_vars.items():
+            normal_params[param] = var.get()
+        
+        # Update hardsub parameters
+        hardsub_params = {}
+        for param, var in self.episode_hardsub_param_vars.items():
+            hardsub_params[param] = var.get()
+
+        self.project.episode_params[episode_num] = {
+            "normal": normal_params,
+            "hardsub": hardsub_params
+        }
+        
+        messagebox.showinfo("Success", f"已更新 E{episode_num} 的编码参数")
+
+    def _reset_episode_params(self):
+        if not self.episode_select.get():
+            return
+            
+        episode_num = self.episode_select.get()[1:]  # Remove 'E' prefix
+        self.project.episode_params[episode_num] = {
+            "normal": self.project.default_normal_x265_params.copy(),
+            "hardsub": self.project.default_hardsub_x265_params.copy()
+        }
+        self._update_episode_params_display()
+    
     def _reset_params(self, param_type):
         if param_type == "normal":
             self.project.current_normal_x265_params = self.project.default_normal_x265_params.copy()
@@ -709,6 +846,7 @@ class EncodingGUI:
         if folder:
             self.project.setup_project(folder)
             self._show_pattern_dialog()
+            self._update_episode_list() 
 
     def _show_pattern_dialog(self):
         dialog = tk.Toplevel(self.root)
@@ -728,6 +866,7 @@ class EncodingGUI:
             pattern_dict = {k: v.get() for k, v in patterns.items()}
             self.project.generate_tasks(pattern_dict)
             self._refresh_task_tree()
+            self._update_episode_list()
             dialog.destroy()
 
         ttk.Button(dialog, text="Confirm", command=confirm).pack(pady=10)
@@ -918,10 +1057,8 @@ class EncodingGUI:
 
         # 如果是编码任务，在运行时构造命令
         if task.task_type == "video" or (("hardsub_" in task.task_type) and ("merge" not in task.task_type)):
-            # 只有视频编码任务和硬字幕编码任务（非合并）需要构造编码命令
-            params = (self.project.current_hardsub_x265_params 
-                    if task.custom_params.get("is_hardsub") 
-                    else self.project.current_normal_x265_params)
+            is_hardsub = task.custom_params.get("is_hardsub")
+            params = self.project.get_episode_params(task.episode_num, is_hardsub)
             
             x265_command = self.project.generate_x265_command(params)
             if isinstance(x265_command, list):
