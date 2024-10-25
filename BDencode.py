@@ -600,17 +600,28 @@ class EncodingGUI:
         task_btn_frame = ttk.Frame(button_frame)
         task_btn_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Button(task_btn_frame, text="开始选中",
+        ttk.Button(task_btn_frame, text="执行选中",
                 command=self._start_selected).pack(side=tk.LEFT, padx=5)
         ttk.Button(task_btn_frame, text="停止选中",
                 command=self._stop_selected).pack(side=tk.LEFT, padx=5)
         ttk.Button(task_btn_frame, text="暂停选中",
                 command=self._pause_selected).pack(side=tk.LEFT, padx=5)
 
+        # Add global control buttons
+        global_btn_frame = ttk.Frame(button_frame)
+        global_btn_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Button(global_btn_frame, text="全部执行",
+                command=self._start_all).pack(side=tk.LEFT, padx=5)
+        ttk.Button(global_btn_frame, text="全部停止",
+                command=self._stop_all).pack(side=tk.LEFT, padx=5)
+        ttk.Button(global_btn_frame, text="全部暂停",
+                command=self._pause_all).pack(side=tk.LEFT, padx=5)
+
         # Output console
         console_frame = ttk.LabelFrame(right_frame, text="输出日志")
         console_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
+        
         # Add scrollbar for output text
         text_frame = ttk.Frame(console_frame)
         text_frame.pack(fill=tk.BOTH, expand=True)
@@ -733,9 +744,33 @@ class EncodingGUI:
         for item in self.tree.get_children():
             self.tree.delete(item)
 
+        # 定义任务类型的顺序
+        task_type_order = {
+            "subtitle_process": 1,
+            "subtitle_cleanup": 2,
+            "audio": 3,
+            "video": 4,
+            "merge": 5,
+            "mux": 6,
+            "hardsub_chs": 7,
+            "hardsub_cht": 8,
+            "hardsub_chs_merge": 9,
+            "hardsub_cht_merge": 10,
+            "organize": 11
+        }
+
+        # 对任务进行排序
+        sorted_tasks = sorted(
+            self.project.tasks,
+            key=lambda x: (
+                int(x.episode_num),  # 首先按集数排序
+                task_type_order.get(x.task_type, 999)  # 然后按任务类型排序
+            )
+        )
+
         # 重新插入所有任务并记录新的item ID
         new_items = {}
-        for task in self.project.tasks:
+        for task in sorted_tasks:
             item_id = self.tree.insert("", tk.END, values=(
                 f"E{task.episode_num.zfill(2)}",
                 task.task_type,
@@ -760,26 +795,25 @@ class EncodingGUI:
     def _start_selected(self):
         try:
             selected_items = self.tree.selection()
-            if not selected_items:
-                messagebox.showwarning("Warning", "No tasks selected")
+            if len(selected_items) > 1:
+                messagebox.showwarning("Warning", "Please select only one task to start")
+                return
+            elif not selected_items:
+                messagebox.showwarning("Warning", "No task selected")
                 return
 
-            for item in selected_items:
-                try:
-                    values = self.tree.item(item)["values"]
-                    if values:
-                        episode = values[0][1:]  # Remove 'E' prefix
-                        task_type = values[1]
+            item = selected_items[0]
+            values = self.tree.item(item)["values"]
+            if values:
+                episode = values[0][1:]  # Remove 'E' prefix
+                task_type = values[1]
 
-                        task = self._find_task(episode, task_type)
-                        if task and task.status != "running":
-                            self._start_task(task)
-                except (IndexError, KeyError) as e:
-                    print(f"Error processing item {item}: {str(e)}")
-                    continue
+                task = self._find_task(episode, task_type)
+                if task and task.status != "running":
+                    self._start_task(task)
         except Exception as e:
             print(f"Error in _start_selected: {str(e)}")
-            messagebox.showerror("Error", f"Failed to start tasks: {str(e)}")
+            messagebox.showerror("Error", f"Failed to start task: {str(e)}")
 
     def _stop_selected(self):
         selected_items = self.tree.selection()
@@ -801,6 +835,74 @@ class EncodingGUI:
 
             task = self._find_task(episode, task_type)
             if task and task.status == "running":
+                self._pause_task(task)
+    
+    def _start_all(self):
+        """Start all tasks in sequence"""
+        # Sort tasks by episode number and predefined order
+        task_type_order = {
+            "subtitle_process": 1,
+            "subtitle_cleanup": 2,
+            "audio": 3,
+            "video": 4,
+            "merge": 5,
+            "mux": 6,
+            "hardsub_chs": 7,
+            "hardsub_cht": 8,
+            "hardsub_chs_merge": 9,
+            "hardsub_cht_merge": 10,
+            "organize": 11
+        }
+        
+        sorted_tasks = sorted(
+            self.project.tasks,
+            key=lambda x: (int(x.episode_num), task_type_order.get(x.task_type, 999))
+        )
+        
+        def execute_next_task(tasks):
+            if not tasks:
+                return
+                
+            task = tasks[0]
+            if task.status not in ["completed", "running"]:
+                if self._check_prerequisites(task):
+                    self._start_task(task)
+                    # Schedule check for next task
+                    self.root.after(1000, lambda: self._check_task_completion(task, tasks[1:]))
+                else:
+                    # Skip this task and move to next
+                    execute_next_task(tasks[1:])
+            else:
+                # Skip this task and move to next
+                execute_next_task(tasks[1:])
+        
+        execute_next_task(sorted_tasks)
+
+    def _check_task_completion(self, current_task, remaining_tasks):
+        """Check if current task is completed and start next task if it is"""
+        if current_task.status == "completed":
+            self._start_all_execute_next(remaining_tasks)
+        elif current_task.status == "failed":
+            messagebox.showerror("Error", f"Task failed: {current_task.episode_num}:{current_task.task_type}")
+        elif current_task.status == "running":
+            # Check again after 1 second
+            self.root.after(1000, lambda: self._check_task_completion(current_task, remaining_tasks))
+
+    def _start_all_execute_next(self, remaining_tasks):
+        """Execute next task in the sequence"""
+        if remaining_tasks:
+            self._start_all()
+
+    def _stop_all(self):
+        """Stop all running tasks"""
+        for task in self.project.tasks:
+            if task.status == "running":
+                self._stop_task(task)
+
+    def _pause_all(self):
+        """Pause all running tasks"""
+        for task in self.project.tasks:
+            if task.status == "running":
                 self._pause_task(task)
 
     def _find_task(self, episode, task_type):
@@ -845,24 +947,35 @@ class EncodingGUI:
             self.output_text.see(tk.END)
             return
 
-        process = subprocess.Popen(
-            task.command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            shell=True,
-            cwd=task.work_dir
-        )
-        task.process = process
+        try:
+            # 创建进程，使用进程组
+            process = subprocess.Popen(
+                task.command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                shell=True,
+                cwd=task.work_dir,
+                preexec_fn=os.setsid  # 创建新的进程组
+            )
+            
+            task.process = process
+            task.status = "running"
+            task.start_time = datetime.now()
+            
+            self.running_tasks[id(task)] = (task, output_queue)
+            threading.Thread(
+                target=self._read_output,
+                args=(task, process, output_queue),
+                daemon=True
+            ).start()
 
-        self.running_tasks[id(task)] = (task, output_queue)
-        threading.Thread(
-            target=self._read_output,
-            args=(task, process, output_queue),
-            daemon=True
-        ).start()
-
-        self._refresh_task_tree()
+            self._refresh_task_tree()
+            
+        except Exception as e:
+            task.status = "failed"
+            self.output_text.insert(tk.END, f"启动任务失败: {str(e)}\n")
+            self.output_text.see(tk.END)
 
     def _check_prerequisites(self, task):
         if not task.prerequisites:
@@ -875,8 +988,25 @@ class EncodingGUI:
         return True
 
     def _read_output(self, task, process, queue):
-        for line in process.stdout:
-            queue.put(line)
+        try:
+            while True:
+                line = process.stdout.readline()
+                if not line:  # EOF
+                    break
+                if task.status == "stopped":
+                    break
+                queue.put(line)
+        except (IOError, ValueError) as e:
+            # 进程被终止时可能会抛出这些异常
+            if task.status != "stopped":
+                print(f"Error reading output: {e}")
+        finally:
+            # 确保进程被终止
+            try:
+                if process.poll() is None:  # 如果进程还在运行
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except Exception as e:
+                print(f"Error in final process cleanup: {e}")
 
     def _update_task_output(self, task, output):
         task.output.append(output)
@@ -890,19 +1020,65 @@ class EncodingGUI:
 
     def _stop_task(self, task):
         if task.process:
-            task.process.terminate()
-            task.status = "stopped"
-            task.end_time = datetime.now()
-            self._refresh_task_tree()
+            try:
+                # 向整个进程组发送 SIGTERM 信号
+                os.killpg(os.getpgid(task.process.pid), signal.SIGTERM)
+                
+                # 等待进程结束，但最多等待 5 秒
+                try:
+                    task.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # 如果进程没有响应 SIGTERM，使用 SIGKILL 强制终止
+                    os.killpg(os.getpgid(task.process.pid), signal.SIGKILL)
+                
+                # 关闭管道
+                if task.process.stdout:
+                    task.process.stdout.close()
+                if task.process.stderr:
+                    task.process.stderr.close()
+                
+                task.status = "stopped"
+                task.end_time = datetime.now()
+                
+                # 从运行任务列表中移除
+                task_id = id(task)
+                if task_id in self.running_tasks:
+                    del self.running_tasks[task_id]
+                
+                self._refresh_task_tree()
+                
+                # 添加停止信息到输出
+                self.output_text.insert(tk.END, 
+                    f"[{task.episode_num}:{task.task_type}] Task stopped by user\n")
+                self.output_text.see(tk.END)
+                
+            except ProcessLookupError:
+                # 进程可能已经结束
+                pass
+            except Exception as e:
+                print(f"Error stopping task: {e}")
 
     def _pause_task(self, task):
         if task.process:
-            if task.paused:
-                task.process.send_signal(signal.SIGCONT)
-                task.paused = False
-            else:
-                task.process.send_signal(signal.SIGSTOP)
-                task.paused = True
+            try:
+                if task.paused:
+                    # 恢复进程组
+                    os.killpg(os.getpgid(task.process.pid), signal.SIGCONT)
+                    task.paused = False
+                    self.output_text.insert(tk.END, 
+                        f"[{task.episode_num}:{task.task_type}] Task resumed\n")
+                else:
+                    # 暂停进程组
+                    os.killpg(os.getpgid(task.process.pid), signal.SIGSTOP)
+                    task.paused = True
+                    self.output_text.insert(tk.END, 
+                        f"[{task.episode_num}:{task.task_type}] Task paused\n")
+                self.output_text.see(tk.END)
+            except ProcessLookupError:
+                # 进程可能已经结束
+                pass
+            except Exception as e:
+                print(f"Error pausing/resuming task: {e}")
 
     def run(self):
         self.root.mainloop()
