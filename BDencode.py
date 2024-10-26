@@ -188,23 +188,32 @@ class EncodingProject:
 
     def generate_tasks(self, episode_patterns):
         try:
-            m2ts_pattern = episode_patterns.get("m2ts", r"[0-9][0-9]\.m2ts")
+            video_pattern = episode_patterns.get("video", r"[0-9][0-9]\.(m2ts|mkv)")
             ass_pattern = episode_patterns.get("ass", r".*\[[0-9][0-9]\].*\.ass")
             chapter_pattern = episode_patterns.get("chapter", r"\ [0-9][0-9]\ \.txt")
 
+            # 添加调试输出
+            print(f"Searching for videos in: {self.root_path / 'raw_video'}")
+            print(f"Video pattern: {video_pattern}")
+            print(f"Found video files: {list(self.root_path.glob('raw_video/*.*'))}")
+
             # Create episode directories and generate tasks
-            for m2ts_file in self.root_path.glob("m2ts/*.m2ts"):
-                if not re.match(m2ts_pattern, m2ts_file.name):
+            for video_file in self.root_path.glob("raw_video/*.*"):
+                if not re.match(video_pattern, video_file.name):
+                    print(f"Video file {video_file.name} doesn't match pattern {video_pattern}")
+                    continue
+                if video_file.suffix.lower() not in ['.m2ts', '.mkv']:
+                    print(f"Video file {video_file.name} has invalid extension")
                     continue
 
-                episode_num = re.search(r"\d+", m2ts_file.name).group()
+                episode_num = re.search(r"\d+", video_file.name).group()
+                print(f"Processing episode {episode_num}")
                 episode_dir = self.root_path / f"E{episode_num.zfill(2)}"
                 os.makedirs(episode_dir, exist_ok=True)
 
                 try:
                     # Copy and setup files
-                    self._setup_episode_files(episode_num, m2ts_file, ass_pattern, chapter_pattern)
-
+                    self._setup_episode_files(episode_num, video_file, ass_pattern, chapter_pattern)
                     # Generate tasks for this episode
                     self._generate_episode_tasks(episode_num)
                 except Exception as e:
@@ -215,26 +224,29 @@ class EncodingProject:
             print(f"Error generating tasks: {str(e)}")
             raise
 
-    def _setup_episode_files(self, episode_num, m2ts_file, ass_pattern, chapter_pattern):
+    def _setup_episode_files(self, episode_num, video_file, ass_pattern, chapter_pattern):
         episode_dir = self.root_path / f"E{episode_num.zfill(2)}"
-        target_m2ts = episode_dir / "source.m2ts"
+        
+        # 根据文件类型确定目标文件名
+        target_video = episode_dir / f"source{video_file.suffix.lower()}"
 
-        if target_m2ts.exists():
-            if target_m2ts.stat().st_size == m2ts_file.stat().st_size:
-                print(f"M2TS file already exists : {target_m2ts}, skip operation")
+        # 处理视频文件复制/移动
+        if target_video.exists():
+            if target_video.stat().st_size == video_file.stat().st_size:
+                print(f"Video file already exists : {target_video}, skip operation")
             else:
-                print(f"M2TS file exists but size differs, {'moving' if self.use_move_mode else 'copying'}: {m2ts_file}")
-                target_m2ts.unlink()
+                print(f"Video file exists but size differs, {'moving' if self.use_move_mode else 'copying'}: {video_file}")
+                target_video.unlink()
                 if self.use_move_mode:
-                    shutil.move(str(m2ts_file), str(target_m2ts))
+                    shutil.move(str(video_file), str(target_video))
                 else:
-                    shutil.copy2(str(m2ts_file), str(target_m2ts))
+                    shutil.copy2(str(video_file), str(target_video))
         else:
-            print(f"M2TS file does not exist, {'moving' if self.use_move_mode else 'copying'}: {m2ts_file}")
+            print(f"Video file does not exist, {'moving' if self.use_move_mode else 'copying'}: {video_file}")
             if self.use_move_mode:
-                shutil.move(str(m2ts_file), str(target_m2ts))
+                shutil.move(str(video_file), str(target_video))
             else:
-                shutil.copy2(str(m2ts_file), str(target_m2ts))
+                shutil.copy2(str(video_file), str(target_video))
 
         for ass_file in self.root_path.glob("subtitles/*.ass"):
             if re.match(ass_pattern, ass_file.name):
@@ -248,11 +260,16 @@ class EncodingProject:
 
         # Create VPY script
         self._create_vpy_script(episode_num)
-
+        
     def _create_vpy_script(self, episode_num):
         episode_dir = self.root_path / f"E{episode_num.zfill(2)}"
         template_path = self.root_path / "template.vpy"
-        source_path = episode_dir / "source.m2ts"
+        
+        # 查找source文件
+        source_files = list(episode_dir.glob("source.*"))
+        if not source_files:
+            raise ValueError(f"No source file found in {episode_dir}")
+        source_path = source_files[0]
 
         with open(template_path, 'r', encoding='utf-8') as f:
             template_content = f.read()
@@ -362,6 +379,11 @@ class EncodingProject:
 
     def _generate_episode_tasks(self, episode_num):
         episode_dir = self.root_path / f"E{episode_num.zfill(2)}"
+        
+        source_files = list(episode_dir.glob("source.*"))
+        if not source_files:
+            raise ValueError(f"No source file found in {episode_dir}")
+        source_path = source_files[0]
 
         # 查找字幕文件
         subtitle_paths = []
@@ -405,7 +427,7 @@ class EncodingProject:
         audio_task = EncodingTask(
             episode_num,
             "audio",
-            f'ffmpeg -i "{str(episode_dir / "source.m2ts")}" -c:a pcm_s24le "{str(episode_dir / f"audio{episode_num}.wav")}" && '
+            f'ffmpeg -i "{str(source_path)}" -c:a pcm_s24le "{str(episode_dir / f"audio{episode_num}.wav")}" && '
             f'flaldf "{str(episode_dir / f"audio{episode_num}.wav")}" -o "{str(episode_dir / f"output{episode_num}.flac")}" && '
             f'ffmpeg -i "{str(episode_dir / f"audio{episode_num}.wav")}" -c:a aac_at  -global_quality:a 14 -aac_at_mode 2 -b:a 320k "{str(episode_dir / f"audio{episode_num}.aac")}"',
             work_dir=str(episode_dir)
@@ -458,10 +480,11 @@ class EncodingProject:
         )
         tasks.append(organize_task)
         
+        # 清理任务
         cleanup_task = EncodingTask(
             episode_num,
             "cleanup",
-            f'rm -f "{str(episode_dir / "source.m2ts")}"',
+            f'rm -f "{str(source_path)}"',
             prerequisites=["organize"],
             work_dir=str(episode_dir)
         )
@@ -988,30 +1011,65 @@ class EncodingGUI:
                         variable=move_var).pack(side=tk.LEFT)
 
         patterns = {}
-        for name in ["m2ts", "ass", "chapter"]:
+        pattern_labels = {
+            "video": "视频文件 (m2ts/mkv)",
+            "ass": "字幕文件 (ass)",
+            "chapter": "章节文件 (txt)"
+        }
+        
+        for name, label in pattern_labels.items():
             frame = ttk.Frame(dialog)
             frame.pack(fill=tk.X, padx=5, pady=5)
-            ttk.Label(frame, text=f"{name} pattern:").pack(side=tk.LEFT)
+            ttk.Label(frame, text=f"{label} pattern:").pack(side=tk.LEFT)
             var = tk.StringVar()
+            if name == "video":
+                var.set(r"[0-9][0-9]\.(m2ts|mkv)")
+            elif name == "ass":
+                var.set(r".*\[[0-9][0-9]\].*\.ass")
+            elif name == "chapter":
+                var.set(r"\ [0-9][0-9]\ \.txt")
             ttk.Entry(frame, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
             patterns[name] = var
 
         def confirm():
-            if move_var.get():
-                if not messagebox.askyesno("确认", 
-                    "使用移动模式将会移动原始m2ts文件而不是复制。\n" + 
-                    "这将节省磁盘空间，但会改变原始文件的位置。\n" + 
-                    "确定要继续吗？"):
-                    return
-                self.project.use_move_mode = True
-            else:
-                self.project.use_move_mode = False
+            try:
+                if move_var.get():
+                    if not messagebox.askyesno("确认", 
+                        "使用移动模式将会移动原始视频文件而不是复制。\n" + 
+                        "这将节省磁盘空间，但会改变原始文件的位置。\n" + 
+                        "确定要继续吗？"):
+                        return
+                    self.project.use_move_mode = True
+                else:
+                    self.project.use_move_mode = False
+                    
+                pattern_dict = {k: v.get() for k, v in patterns.items()}
+                print("Using patterns:", pattern_dict)  # 添加调试输出
                 
-            pattern_dict = {k: v.get() for k, v in patterns.items()}
-            self.project.generate_tasks(pattern_dict)
-            self._refresh_task_tree()
-            self._update_episode_list()
-            dialog.destroy()
+                # 检查必要文件夹是否存在
+                required_dirs = ['raw_video', 'subtitles', 'chapters', 'fonts']
+                missing_dirs = []
+                for dir_name in required_dirs:
+                    if not (self.project.root_path / dir_name).exists():
+                        missing_dirs.append(dir_name)
+                
+                if missing_dirs:
+                    messagebox.showerror("错误", f"缺少必要的文件夹: {', '.join(missing_dirs)}")
+                    return
+                    
+                # 检查template.vpy是否存在
+                if not (self.project.root_path / "template.vpy").exists():
+                    messagebox.showerror("错误", "缺少 template.vpy 文件")
+                    return
+                
+                self.project.generate_tasks(pattern_dict)
+                self._refresh_task_tree()
+                self._update_episode_list()
+                dialog.destroy()
+                
+            except Exception as e:
+                messagebox.showerror("错误", f"生成任务时发生错误: {str(e)}")
+                print(f"Error in confirm: {str(e)}")  # 添加调试输出
 
         ttk.Button(dialog, text="确认", command=confirm).pack(pady=10)
 
