@@ -305,11 +305,10 @@ class EncodingProject:
         try:
             # 输出调试信息
             if hasattr(self, 'output_text'):
-                self.output_text.insert(tk.END, f"\n[{task.episode_num}:{task.task_type}] Task Info:\n")
+                self.log_window.append_log(f"\n[{task.episode_num}:{task.task_type}] Task Info:\n")
                 if task.work_dir:
-                    self.output_text.insert(tk.END, f"Working Directory: {task.work_dir}\n")
-                self.output_text.insert(tk.END, f"Command: {task.command}\n\n")
-                self.output_text.see(tk.END)
+                    self.log_window.append_log(f"Working Directory: {task.work_dir}\n")
+                self.log_window.append_log.insert(f"Command: {task.command}\n\n")
 
             # 如果命令是列表，转换为字符串
             if isinstance(task.command, list):
@@ -339,8 +338,7 @@ class EncodingProject:
         except Exception as e:
             task.status = "failed"
             if hasattr(self, 'output_text'):
-                self.output_text.insert(tk.END, f"任务执行失败: {str(e)}\n")
-                self.output_text.see(tk.END)
+                self.log_window.append_logt(f"任务执行失败: {str(e)}\n")
 
     def _monitor_output(self, task, process):
         try:
@@ -351,13 +349,11 @@ class EncodingProject:
                 line = line.strip()
                 if line:
                     if hasattr(self, 'output_text'):
-                        self.output_text.insert(tk.END, f"[{task.episode_num}:{task.task_type}] {line}\n")
-                        self.output_text.see(tk.END)
+                        self.log_window.append_log.insert(f"[{task.episode_num}:{task.task_type}] {line}\n")
                     task.output.append(line)
         except Exception as e:
             if hasattr(self, 'output_text'):
-                self.output_text.insert(tk.END, f"输出监控错误: {str(e)}\n")
-                self.output_text.see(tk.END)
+                self.log_window.append_log.insert(f"输出监控错误: {str(e)}\n")
         finally:
             try:
                 process.wait()
@@ -567,35 +563,43 @@ sub.set_output(0)
         return tasks
     
 class LogWindow(tk.Toplevel):
-    def __init__(self, root, gui):
-        super().__init__(root)  # 使用root作为父窗口
+    def __init__(self, root):
+        super().__init__(root)
         self.title("输出日志")
         self.geometry("800x600")
         
-        # 存储GUI引用
-        self.gui = gui
+        self.text_lock = threading.Lock()
+        
+        # 创建主容器
+        main_container = ttk.Frame(self)
+        main_container.pack(fill=tk.BOTH, expand=True)
         
         # 创建文本框和滚动条
-        self.text_frame = ttk.Frame(self)
-        self.text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        self.output_text = tk.Text(self.text_frame, wrap=tk.WORD)
-        self.scroll = ttk.Scrollbar(self.text_frame, orient=tk.VERTICAL, command=self.output_text.yview)
-        self.output_text.configure(yscrollcommand=self.scroll.set)
+        self.output_text = tk.Text(main_container, wrap=tk.WORD)
+        scroll = ttk.Scrollbar(main_container, orient=tk.VERTICAL, 
+                             command=self.output_text.yview)
+        self.output_text.configure(yscrollcommand=scroll.set)
         
         self.output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # 添加清除按钮
-        ttk.Button(self, text="清除日志",
-                   command=lambda: self.output_text.delete(1.0, tk.END)).pack(pady=5)
+        # 底部按钮框架
+        button_frame = ttk.Frame(self)
+        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Button(button_frame, text="清除日志",
+                  command=self.clear_log).pack(side=tk.LEFT)
         
-        # 处理窗口关闭事件
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.is_floating = True
+        # 确保关闭窗口时不会退出程序
+        self.protocol("WM_DELETE_WINDOW", self.withdraw)
+
+    def clear_log(self):
+        with self.text_lock:
+            self.output_text.delete(1.0, tk.END)
     
-    def on_closing(self):
-        self.gui.toggle_log_window()
+    def append_log(self, text):
+        with self.text_lock:
+            self.output_text.insert(tk.END, text)
+            self.output_text.see(tk.END)
 
 class EncodingGUI:
     def __init__(self):
@@ -607,16 +611,11 @@ class EncodingGUI:
         self.running_tasks = {}
         self.output_queues = {}
         
-        # 先创建GUI
+        # 创建日志窗口
+        self.log_window = LogWindow(self.root)
+        
+        # 创建GUI
         self._create_gui()
-        
-        # 创建日志窗口实例（传入root和self）
-        self.log_window = LogWindow(self.root, self)
-        self.log_window.withdraw()  # 初始时隐藏
-        
-        # 初始设置当前活动的输出文本框
-        self.output_text = self.embedded_output_text
-        
         self._setup_task_monitor()
 
     def _create_gui(self):
@@ -784,78 +783,46 @@ class EncodingGUI:
         ttk.Button(global_btn_frame, text="全部暂停",
                 command=self._pause_all).pack(side=tk.LEFT, padx=5)
 
-        # 创建控制台框架容器
+        # 控制台容器
         console_container = ttk.Frame(self.right_frame)
         console_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # 创建标题栏框架
-        title_frame = ttk.Frame(console_container)
-        title_frame.pack(fill=tk.X)
-        
-        # 创建标题标签和按钮
-        ttk.Label(title_frame, text="输出日志").pack(side=tk.LEFT)
-        ttk.Button(title_frame, text="浮动窗口", width=8,
-                command=self.toggle_log_window).pack(side=tk.LEFT, padx=5)
-        
-        # 创建分隔线
-        separator = ttk.Separator(console_container, orient='horizontal')
-        separator.pack(fill=tk.X, pady=2)
-        
-        # 创建日志内容框架
-        self.embedded_text_frame = ttk.Frame(console_container)
-        self.embedded_text_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 创建文本框和滚动条
-        self.embedded_output_text = tk.Text(self.embedded_text_frame, wrap=tk.WORD)
-        self.embedded_scroll = ttk.Scrollbar(self.embedded_text_frame, orient=tk.VERTICAL, 
-                                        command=self.embedded_output_text.yview)
-        self.embedded_output_text.configure(yscrollcommand=self.embedded_scroll.set)
-        
-        self.embedded_output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.embedded_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # 底部按钮框架
-        button_frame = ttk.Frame(console_container)
-        button_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(button_frame, text="清除日志",
-                command=self.clear_log).pack(side=tk.LEFT, padx=5)
-        
-        # 初始设置当前活动的输出文本框
-        self.output_text = self.embedded_output_text
+        ttk.Button(self.root, text="显示日志窗口",
+                  command=self.show_log_window).pack(pady=5)
 
-    def toggle_log_window(self):
-        if not self.log_window.is_floating:
-            # 切换到浮动窗口
-            # 复制当前日志内容到浮动窗口
-            self.log_window.output_text.delete(1.0, tk.END)
-            self.log_window.output_text.insert(1.0, self.embedded_output_text.get(1.0, tk.END))
-            self.output_text = self.log_window.output_text
-            self.log_window.deiconify()
-            self.log_window.is_floating = True
-            self.embedded_text_frame.pack_forget()
-        else:
-            # 切换回嵌入式窗口
-            # 复制当前日志内容到嵌入式窗口
-            self.embedded_output_text.delete(1.0, tk.END)
-            self.embedded_output_text.insert(1.0, self.log_window.output_text.get(1.0, tk.END))
-            self.output_text = self.embedded_output_text
-            self.log_window.withdraw()
-            self.log_window.is_floating = False
-            self.embedded_text_frame.pack(fill=tk.BOTH, expand=True)
+    def show_log_window(self):
+        # 显示日志窗口并将其提升到顶层
+        self.log_window.deiconify()
+        self.log_window.lift()
+        
+        # 确保窗口位置合适
+        x = self.root.winfo_x() + 50
+        y = self.root.winfo_y() + 50
+        self.log_window.geometry(f"+{x}+{y}")
 
-    def clear_log(self):
-        # 同时清除两个窗口的内容
-        self.embedded_output_text.delete(1.0, tk.END)
-        self.log_window.output_text.delete(1.0, tk.END)
+    def _update_task_output(self, task, output):
+        try:
+            task.output.append(output)
+            log_text = f"[{task.episode_num}:{task.task_type}] {output}"
+            self.log_window.append_log(log_text)
+        except Exception as e:
+            print(f"Error updating task output: {e}")
 
     def run(self):
+        # 显示日志窗口
+        self.show_log_window()
+        
         def on_closing():
             self.log_window.destroy()
             self.root.destroy()
             
         self.root.protocol("WM_DELETE_WINDOW", on_closing)
         self.root.mainloop()
+
+    def clear_log(self):
+        with self.output_lock:  # 使用锁保护清除操作
+            self.embedded_output_text.delete(1.0, tk.END)
+            self.log_window.output_text.delete(1.0, tk.END)
         
     def _update_episode_list(self):
         if not hasattr(self.project, 'tasks') or not self.project.tasks:
@@ -1257,8 +1224,7 @@ class EncodingGUI:
 
         if task.command is None:
             task.status = "failed"
-            self.output_text.insert(tk.END, f"任务命令未正确设置: {task.task_type}\n")
-            self.output_text.see(tk.END)
+            self.log_window.append_log(f"任务命令未正确设置: {task.task_type}\n")
             return
 
         try:
@@ -1288,8 +1254,7 @@ class EncodingGUI:
             
         except Exception as e:
             task.status = "failed"
-            self.output_text.insert(tk.END, f"启动任务失败: {str(e)}\n")
-            self.output_text.see(tk.END)
+            self.log_window.append_log.insert(f"启动任务失败: {str(e)}\n")
 
     def _check_prerequisites(self, task):
         if not task.prerequisites:
@@ -1324,8 +1289,7 @@ class EncodingGUI:
 
     def _update_task_output(self, task, output):
         task.output.append(output)
-        self.output_text.insert(tk.END, f"[{task.episode_num}:{task.task_type}] {output}")
-        self.output_text.see(tk.END)
+        self.log_window.append_log( f"[{task.episode_num}:{task.task_type}] {output}")
 
     def _task_completed(self, task):
         task.end_time = datetime.now()
@@ -1362,9 +1326,7 @@ class EncodingGUI:
                 self._refresh_task_tree()
                 
                 # 添加停止信息到输出
-                self.output_text.insert(tk.END, 
-                    f"[{task.episode_num}:{task.task_type}] Task stopped by user\n")
-                self.output_text.see(tk.END)
+                self.log_window.append_log(f"[{task.episode_num}:{task.task_type}] Task stopped by user\n")
                 
             except ProcessLookupError:
                 # 进程可能已经结束
@@ -1379,15 +1341,12 @@ class EncodingGUI:
                     # 恢复进程组
                     os.killpg(os.getpgid(task.process.pid), signal.SIGCONT)
                     task.paused = False
-                    self.output_text.insert(tk.END, 
-                        f"[{task.episode_num}:{task.task_type}] Task resumed\n")
+                    self.log_window.append_log(f"[{task.episode_num}:{task.task_type}] Task resumed\n")
                 else:
                     # 暂停进程组
                     os.killpg(os.getpgid(task.process.pid), signal.SIGSTOP)
                     task.paused = True
-                    self.output_text.insert(tk.END, 
-                        f"[{task.episode_num}:{task.task_type}] Task paused\n")
-                self.output_text.see(tk.END)
+                    self.log_window.append_log(f"[{task.episode_num}:{task.task_type}] Task paused\n")
             except ProcessLookupError:
                 # 进程可能已经结束
                 pass
