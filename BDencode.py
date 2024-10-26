@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from datetime import datetime
 import signal
+import json
 
 class EncodingTask:
     def __init__(self, episode_num, task_type, command, prerequisites=None, work_dir=None):
@@ -89,8 +90,70 @@ class EncodingProject:
         self.current_normal_x265_params = self.default_normal_x265_params.copy()
         self.current_hardsub_x265_params = self.default_hardsub_x265_params.copy()
         self.episode_params = {}
-        
         self.use_move_mode = False
+        self.params_file = None
+        
+    def setup_project(self, root_path):
+        self.root_path = Path(root_path)
+        self.workspace_path = Path.home() / self.root_path.name
+        os.makedirs(self.workspace_path, exist_ok=True)
+        
+        # 创建或加载编码参数配置文件
+        self.params_file = self.root_path / "encoding_params.json"
+        self.load_encoding_params()
+
+    def save_encoding_params(self):
+        """保存编码参数到JSON文件"""
+        params_data = {
+            "global": {
+                "normal": self.current_normal_x265_params,
+                "hardsub": self.current_hardsub_x265_params
+            },
+            "episodes": self.episode_params
+        }
+        
+        try:
+            with open(self.params_file, 'w', encoding='utf-8') as f:
+                json.dump(params_data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error saving encoding parameters: {str(e)}")
+
+    def load_encoding_params(self):
+        """从JSON文件加载编码参数"""
+        if not self.params_file.exists():
+            return
+        
+        try:
+            with open(self.params_file, 'r', encoding='utf-8') as f:
+                params_data = json.load(f)
+                
+            # 加载全局参数
+            if "global" in params_data:
+                if "normal" in params_data["global"]:
+                    # 确保所有必要的参数都存在
+                    loaded_normal = params_data["global"]["normal"]
+                    for key in self.default_normal_x265_params:
+                        if key in loaded_normal:
+                            self.current_normal_x265_params[key] = loaded_normal[key]
+                
+                if "hardsub" in params_data["global"]:
+                    # 确保所有必要的参数都存在
+                    loaded_hardsub = params_data["global"]["hardsub"]
+                    for key in self.default_hardsub_x265_params:
+                        if key in loaded_hardsub:
+                            self.current_hardsub_x265_params[key] = loaded_hardsub[key]
+            
+            # 加载单集参数
+            if "episodes" in params_data:
+                self.episode_params = params_data["episodes"]
+                
+            print("Loaded encoding parameters:")  # 调试输出
+            print("Normal:", self.current_normal_x265_params)
+            print("Hardsub:", self.current_hardsub_x265_params)
+            print("Episodes:", self.episode_params)
+            
+        except Exception as e:
+            print(f"Error loading encoding parameters: {str(e)}")
         
     def get_episode_params(self, episode_num, is_hardsub=False):
         param_type = "hardsub" if is_hardsub else "normal"
@@ -180,11 +243,6 @@ class EncodingProject:
         print(f"Deblock: {('0:0' if crf > 21 else '0:-1' if crf > 18 else '-1:-1')}")
 
         return cmd
-
-    def setup_project(self, root_path):
-        self.root_path = Path(root_path)
-        self.workspace_path = Path.home() / self.root_path.name
-        os.makedirs(self.workspace_path, exist_ok=True)
 
     def generate_tasks(self, episode_patterns):
         try:
@@ -600,7 +658,7 @@ class LogWindow(tk.Toplevel):
         # 创建文本框和滚动条
         self.output_text = tk.Text(main_container, wrap=tk.WORD)
         scroll = ttk.Scrollbar(main_container, orient=tk.VERTICAL, 
-                             command=self.output_text.yview)
+                                command=self.output_text.yview)
         self.output_text.configure(yscrollcommand=scroll.set)
         
         self.output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -610,7 +668,7 @@ class LogWindow(tk.Toplevel):
         button_frame = ttk.Frame(self)
         button_frame.pack(fill=tk.X, padx=5, pady=5)
         ttk.Button(button_frame, text="清除日志",
-                  command=self.clear_log).pack(side=tk.LEFT)
+                    command=self.clear_log).pack(side=tk.LEFT)
         
         # 确保关闭窗口时不会退出程序
         self.protocol("WM_DELETE_WINDOW", self.withdraw)
@@ -811,7 +869,7 @@ class EncodingGUI:
         console_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         ttk.Button(self.root, text="显示日志窗口",
-                  command=self.show_log_window).pack(pady=5)
+                    command=self.show_log_window).pack(pady=5)
 
     def show_log_window(self):
         # 显示日志窗口并将其提升到顶层
@@ -929,16 +987,6 @@ class EncodingGUI:
         }
         self._update_episode_params_display()
     
-    def _reset_params(self, param_type):
-        if param_type == "normal":
-            self.project.current_normal_x265_params = self.project.default_normal_x265_params.copy()
-            for param, var in self.normal_param_vars.items():
-                var.set(str(self.project.current_normal_x265_params[param]))
-        else:
-            self.project.current_hardsub_x265_params = self.project.default_hardsub_x265_params.copy()
-            for param, var in self.hardsub_param_vars.items():
-                var.set(str(self.project.current_hardsub_x265_params[param]))
-
     def _apply_params(self):
         # Update normal encode parameters
         for param, var in self.normal_param_vars.items():
@@ -948,8 +996,80 @@ class EncodingGUI:
         for param, var in self.hardsub_param_vars.items():
             self.project.current_hardsub_x265_params[param] = var.get()
 
+        # Save parameters to JSON
+        self.project.save_encoding_params()
+
         # Update running tasks if needed
         self._update_running_tasks_params()
+
+    def _apply_episode_params(self):
+        if not self.episode_select.get():
+            return
+            
+        episode_num = self.episode_select.get()[1:]  # Remove 'E' prefix
+        
+        # 获取当前全局参数
+        current_normal = self.project.current_normal_x265_params
+        current_hardsub = self.project.current_hardsub_x265_params
+        
+        # 获取新的参数值
+        normal_params = {
+            param: var.get() for param, var in self.episode_normal_param_vars.items()
+        }
+        hardsub_params = {
+            param: var.get() for param, var in self.episode_hardsub_param_vars.items()
+        }
+        
+        # 检查是否与全局参数不同
+        normal_different = any(
+            normal_params[key] != str(current_normal[key])
+            for key in current_normal
+        )
+        hardsub_different = any(
+            hardsub_params[key] != str(current_hardsub[key])
+            for key in current_hardsub
+        )
+        
+        # 如果有不同，才保存单集参数
+        if normal_different or hardsub_different:
+            self.project.episode_params[episode_num] = {
+                "normal": normal_params,
+                "hardsub": hardsub_params
+            }
+            # 保存到JSON
+            self.project.save_encoding_params()
+            messagebox.showinfo("Success", f"已更新 E{episode_num} 的编码参数")
+        else:
+            # 如果参数与全局参数相同，删除单集参数设置
+            if episode_num in self.project.episode_params:
+                del self.project.episode_params[episode_num]
+                # 保存到JSON
+                self.project.save_encoding_params()
+            messagebox.showinfo("Success", f"E{episode_num} 将使用全局编码参数")
+
+    def _reset_params(self, param_type):
+        if param_type == "normal":
+            self.project.current_normal_x265_params = self.project.default_normal_x265_params.copy()
+            for param, var in self.normal_param_vars.items():
+                var.set(str(self.project.current_normal_x265_params[param]))
+        else:
+            self.project.current_hardsub_x265_params = self.project.default_hardsub_x265_params.copy()
+            for param, var in self.hardsub_param_vars.items():
+                var.set(str(self.project.current_hardsub_x265_params[param]))
+                
+        # 保存到JSON
+        self.project.save_encoding_params()
+
+    def _reset_episode_params(self):
+        if not self.episode_select.get():
+            return
+            
+        episode_num = self.episode_select.get()[1:]  # Remove 'E' prefix
+        if episode_num in self.project.episode_params:
+            del self.project.episode_params[episode_num]
+            # 保存到JSON
+            self.project.save_encoding_params()
+        self._update_episode_params_display()
 
     def _update_running_tasks_params(self):
         for task_id, (task, queue) in self.running_tasks.items():
@@ -990,13 +1110,31 @@ class EncodingGUI:
                     del self.running_tasks[task_id]
 
                 time.sleep(0.1)
+    
+    def _update_gui_after_load(self):
+        """更新 GUI 以反映加载的参数"""
+        # 更新普通编码参数显示
+        for param, var in self.normal_param_vars.items():
+            var.set(str(self.project.current_normal_x265_params[param]))
+        
+        # 更新硬字幕编码参数显示
+        for param, var in self.hardsub_param_vars.items():
+            var.set(str(self.project.current_hardsub_x265_params[param]))
+                
+    def _setup_project(self, root_path):
+        self.project.setup_project(root_path)
+        # 在加载参数后更新 GUI 显示
+        self._update_gui_after_load()
+        self._show_pattern_dialog()
+        self._update_episode_list()
 
     def _select_project_folder(self):
         folder = filedialog.askdirectory()
         if folder:
-            self.project.setup_project(folder)
-            self._show_pattern_dialog()
-            self._update_episode_list() 
+            try:
+                self._setup_project(folder)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to setup project: {str(e)}")
 
     def _show_pattern_dialog(self):
         dialog = tk.Toplevel(self.root)
