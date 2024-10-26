@@ -132,12 +132,12 @@ class EncodingProject:
         ]
 
         # 根据 CRF 值动态调整参数
-        if crf <= 18:
+        if crf < 18:
             base_params.extend([
                 "--no-sao",
                 "--deblock=-1:-1"
             ])
-        elif 18 < crf <= 21:
+        elif 18 <= crf <= 21:
             base_params.extend([
                 "--limit-sao",
                 "--deblock=0:-1"
@@ -154,6 +154,11 @@ class EncodingProject:
             cmd.extend([f"--tune={params['tune']}"])
         cmd.extend([f"--preset={params['preset']}"])
         cmd.extend(base_params)
+
+        # 添加调试输出
+        print(f"Generating x265 command for CRF {crf}")
+        print(f"SAO: {'enabled' if crf > 21 else 'limited' if crf > 18 else 'disabled'}")
+        print(f"Deblock: {('0:0' if crf > 21 else '0:-1' if crf > 18 else '-1:-1')}")
 
         return cmd
 
@@ -541,18 +546,58 @@ sub.set_output(0)
             tasks.append(merge_task)
 
         return tasks
+    
+class LogWindow(tk.Toplevel):
+    def __init__(self, root, gui):
+        super().__init__(root)  # 使用root作为父窗口
+        self.title("输出日志")
+        self.geometry("800x600")
+        
+        # 存储GUI引用
+        self.gui = gui
+        
+        # 创建文本框和滚动条
+        self.text_frame = ttk.Frame(self)
+        self.text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.output_text = tk.Text(self.text_frame, wrap=tk.WORD)
+        self.scroll = ttk.Scrollbar(self.text_frame, orient=tk.VERTICAL, command=self.output_text.yview)
+        self.output_text.configure(yscrollcommand=self.scroll.set)
+        
+        self.output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 添加清除按钮
+        ttk.Button(self, text="清除日志",
+                   command=lambda: self.output_text.delete(1.0, tk.END)).pack(pady=5)
+        
+        # 处理窗口关闭事件
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.is_floating = True
+    
+    def on_closing(self):
+        self.gui.toggle_log_window()
 
 class EncodingGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("BD Encoding Manager")
         self.root.geometry("1200x800")
-
+        
         self.project = EncodingProject()
         self.running_tasks = {}
         self.output_queues = {}
-
+        
+        # 先创建GUI
         self._create_gui()
+        
+        # 创建日志窗口实例（传入root和self）
+        self.log_window = LogWindow(self.root, self)
+        self.log_window.withdraw()  # 初始时隐藏
+        
+        # 初始设置当前活动的输出文本框
+        self.output_text = self.embedded_output_text
+        
         self._setup_task_monitor()
 
     def _create_gui(self):
@@ -563,7 +608,7 @@ class EncodingGUI:
         # Left panel (Tree)
         left_frame = ttk.Frame(main_container)
         main_container.add(left_frame)
-
+        
         # Task tree
         columns = ("Episode", "Task", "Status", "Duration")
         self.tree = ttk.Treeview(left_frame, columns=columns, show="headings")
@@ -579,19 +624,18 @@ class EncodingGUI:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Right panel (Controls and Output)
-        right_frame = ttk.Frame(main_container)
-        main_container.add(right_frame)
+        self.right_frame = ttk.Frame(main_container)  # 保存为实例变量
+        main_container.add(self.right_frame)
 
         # Control panel
-        control_frame = ttk.LabelFrame(right_frame, text="控制面板")
+        control_frame = ttk.LabelFrame(self.right_frame, text="控制面板")
         control_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # Project setup
         project_frame = ttk.LabelFrame(control_frame, text="项目设置")
         project_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Button(project_frame, text="选择项目文件夹",
-                command=self._select_project_folder).pack(pady=5)
+        ttk.Button(project_frame, text="选择项目文件夹", command=self._select_project_folder).pack(pady=5)
 
         # Encoding parameters
         params_frame = ttk.LabelFrame(control_frame, text="编码参数")
@@ -617,8 +661,7 @@ class EncodingGUI:
             entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
             self.normal_param_vars[param] = var
 
-        ttk.Button(normal_frame, text="重置为默认值",
-                command=lambda: self._reset_params("normal")).pack(pady=5)
+        ttk.Button(normal_frame, text="重置为默认值", command=lambda: self._reset_params("normal")).pack(pady=5)
 
         # Hardsub encode parameters
         hardsub_frame = ttk.LabelFrame(params_frame, text="硬字幕编码（内嵌）")
@@ -634,12 +677,10 @@ class EncodingGUI:
             entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
             self.hardsub_param_vars[param] = var
 
-        ttk.Button(hardsub_frame, text="重置为默认值",
-                command=lambda: self._reset_params("hardsub")).pack(pady=5)
+        ttk.Button(hardsub_frame, text="重置为默认值", command=lambda: self._reset_params("hardsub")).pack(pady=5)
 
         # Add apply button
-        ttk.Button(params_frame, text="应用参数设置",
-                command=self._apply_params).pack(pady=5)
+        ttk.Button(params_frame, text="应用参数设置", command=self._apply_params).pack(pady=5)
         
         # Episode-specific parameters
         episode_params_frame = ttk.LabelFrame(params_frame, text="单集编码参数")
@@ -657,8 +698,7 @@ class EncodingGUI:
         self.episode_select['values'] = []
         
         # 添加一个刷新按钮
-        ttk.Button(episode_select_frame, text="刷新列表", 
-              command=self._update_episode_list).pack(side=tk.LEFT, padx=5)
+        ttk.Button(episode_select_frame, text="刷新列表", command=self._update_episode_list).pack(side=tk.LEFT, padx=5)
 
         # Episode normal parameters
         self.episode_normal_params_frame = ttk.LabelFrame(episode_params_frame, text="普通编码（内封）")
@@ -697,10 +737,8 @@ class EncodingGUI:
         # Episode parameter control buttons
         episode_btn_frame = ttk.Frame(episode_params_frame)
         episode_btn_frame.pack(fill=tk.X, pady=5)
-        ttk.Button(episode_btn_frame, text="应用到当前集数",
-                  command=self._apply_episode_params).pack(side=tk.LEFT, padx=5)
-        ttk.Button(episode_btn_frame, text="重置当前集数",
-                  command=self._reset_episode_params).pack(side=tk.LEFT, padx=5)
+        ttk.Button(episode_btn_frame, text="应用到当前集数", command=self._apply_episode_params).pack(side=tk.LEFT, padx=5)
+        ttk.Button(episode_btn_frame, text="重置当前集数", command=self._reset_episode_params).pack(side=tk.LEFT, padx=5)
 
         # Task control buttons
         button_frame = ttk.LabelFrame(control_frame, text="任务控制")
@@ -727,30 +765,78 @@ class EncodingGUI:
         ttk.Button(global_btn_frame, text="全部暂停",
                 command=self._pause_all).pack(side=tk.LEFT, padx=5)
 
-        # Output console
-        console_frame = ttk.LabelFrame(right_frame, text="输出日志")
-        console_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # 创建控制台框架容器
+        console_container = ttk.Frame(self.right_frame)
+        console_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Add scrollbar for output text
-        text_frame = ttk.Frame(console_frame)
-        text_frame.pack(fill=tk.BOTH, expand=True)
+        # 创建标题栏框架
+        title_frame = ttk.Frame(console_container)
+        title_frame.pack(fill=tk.X)
+        
+        # 创建标题标签和按钮
+        ttk.Label(title_frame, text="输出日志").pack(side=tk.LEFT)
+        ttk.Button(title_frame, text="浮动窗口", width=8,
+                command=self.toggle_log_window).pack(side=tk.LEFT, padx=5)
+        
+        # 创建分隔线
+        separator = ttk.Separator(console_container, orient='horizontal')
+        separator.pack(fill=tk.X, pady=2)
+        
+        # 创建日志内容框架
+        self.embedded_text_frame = ttk.Frame(console_container)
+        self.embedded_text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 创建文本框和滚动条
+        self.embedded_output_text = tk.Text(self.embedded_text_frame, wrap=tk.WORD)
+        self.embedded_scroll = ttk.Scrollbar(self.embedded_text_frame, orient=tk.VERTICAL, 
+                                        command=self.embedded_output_text.yview)
+        self.embedded_output_text.configure(yscrollcommand=self.embedded_scroll.set)
+        
+        self.embedded_output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.embedded_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 底部按钮框架
+        button_frame = ttk.Frame(console_container)
+        button_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(button_frame, text="清除日志",
+                command=self.clear_log).pack(side=tk.LEFT, padx=5)
+        
+        # 初始设置当前活动的输出文本框
+        self.output_text = self.embedded_output_text
 
-        self.output_text = tk.Text(text_frame, wrap=tk.WORD, height=20)
-        scroll = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.output_text.yview)
-        self.output_text.configure(yscrollcommand=scroll.set)
+    def toggle_log_window(self):
+        if not self.log_window.is_floating:
+            # 切换到浮动窗口
+            # 复制当前日志内容到浮动窗口
+            self.log_window.output_text.delete(1.0, tk.END)
+            self.log_window.output_text.insert(1.0, self.embedded_output_text.get(1.0, tk.END))
+            self.output_text = self.log_window.output_text
+            self.log_window.deiconify()
+            self.log_window.is_floating = True
+            self.embedded_text_frame.pack_forget()
+        else:
+            # 切换回嵌入式窗口
+            # 复制当前日志内容到嵌入式窗口
+            self.embedded_output_text.delete(1.0, tk.END)
+            self.embedded_output_text.insert(1.0, self.log_window.output_text.get(1.0, tk.END))
+            self.output_text = self.embedded_output_text
+            self.log_window.withdraw()
+            self.log_window.is_floating = False
+            self.embedded_text_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+    def clear_log(self):
+        # 同时清除两个窗口的内容
+        self.embedded_output_text.delete(1.0, tk.END)
+        self.log_window.output_text.delete(1.0, tk.END)
 
-        # Add clear log button
-        ttk.Button(console_frame, text="清除日志",
-                command=lambda: self.output_text.delete(1.0, tk.END)).pack(pady=5)
-
-        # Status bar
-        self.status_var = tk.StringVar()
-        self.status_var.set("就绪")
-        status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+    def run(self):
+        def on_closing():
+            self.log_window.destroy()
+            self.root.destroy()
+            
+        self.root.protocol("WM_DELETE_WINDOW", on_closing)
+        self.root.mainloop()
         
     def _update_episode_list(self):
         if not hasattr(self.project, 'tasks') or not self.project.tasks:
@@ -1270,9 +1356,6 @@ class EncodingGUI:
                 pass
             except Exception as e:
                 print(f"Error pausing/resuming task: {e}")
-
-    def run(self):
-        self.root.mainloop()
 
 def main():
     gui = EncodingGUI()
