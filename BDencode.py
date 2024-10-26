@@ -93,13 +93,32 @@ class EncodingProject:
         self.use_move_mode = False
         
     def get_episode_params(self, episode_num, is_hardsub=False):
-        if episode_num not in self.episode_params:
-            self.episode_params[episode_num] = {
-                "normal": self.default_normal_x265_params.copy(),
-                "hardsub": self.default_hardsub_x265_params.copy()
-            }
         param_type = "hardsub" if is_hardsub else "normal"
-        return self.episode_params[episode_num][param_type]
+        
+        # 如果这一集没有单独设置参数
+        if episode_num not in self.episode_params:
+            # 使用全局参数
+            return (self.current_hardsub_x265_params.copy() if is_hardsub 
+                    else self.current_normal_x265_params.copy())
+        
+        # 如果这一集的参数是默认值，也使用全局参数
+        episode_params = self.episode_params[episode_num][param_type]
+        default_params = (self.default_hardsub_x265_params if is_hardsub 
+                        else self.default_normal_x265_params)
+        
+        # 检查是否所有参数都是默认值
+        is_default = all(
+            episode_params[key] == default_params[key]
+            for key in default_params
+        )
+        
+        if is_default:
+            # 使用全局参数
+            return (self.current_hardsub_x265_params.copy() if is_hardsub 
+                    else self.current_normal_x265_params.copy())
+    
+        # 使用单集特定参数
+        return episode_params
     
     def generate_x265_command(self, params):
         try:
@@ -874,22 +893,40 @@ class EncodingGUI:
             
         episode_num = self.episode_select.get()[1:]  # Remove 'E' prefix
         
-        # Update normal parameters
-        normal_params = {}
-        for param, var in self.episode_normal_param_vars.items():
-            normal_params[param] = var.get()
+        # 获取当前全局参数
+        current_normal = self.project.current_normal_x265_params
+        current_hardsub = self.project.current_hardsub_x265_params
         
-        # Update hardsub parameters
-        hardsub_params = {}
-        for param, var in self.episode_hardsub_param_vars.items():
-            hardsub_params[param] = var.get()
-
-        self.project.episode_params[episode_num] = {
-            "normal": normal_params,
-            "hardsub": hardsub_params
+        # 获取新的参数值
+        normal_params = {
+            param: var.get() for param, var in self.episode_normal_param_vars.items()
+        }
+        hardsub_params = {
+            param: var.get() for param, var in self.episode_hardsub_param_vars.items()
         }
         
-        messagebox.showinfo("Success", f"已更新 E{episode_num} 的编码参数")
+        # 检查是否与全局参数不同
+        normal_different = any(
+            normal_params[key] != str(current_normal[key])
+            for key in current_normal
+        )
+        hardsub_different = any(
+            hardsub_params[key] != str(current_hardsub[key])
+            for key in current_hardsub
+        )
+        
+        # 如果有不同，才保存单集参数
+        if normal_different or hardsub_different:
+            self.project.episode_params[episode_num] = {
+                "normal": normal_params,
+                "hardsub": hardsub_params
+            }
+            messagebox.showinfo("Success", f"已更新 E{episode_num} 的编码参数")
+        else:
+            # 如果参数与全局参数相同，删除单集参数设置
+            if episode_num in self.project.episode_params:
+                del self.project.episode_params[episode_num]
+            messagebox.showinfo("Success", f"E{episode_num} 将使用全局编码参数")
 
     def _reset_episode_params(self):
         if not self.episode_select.get():
