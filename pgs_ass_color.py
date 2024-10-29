@@ -307,18 +307,25 @@ class ASSColorUpdater:
     def _update_dialogue_text(self, text: str, new_color: str) -> str:
         color_tag = f"\\3c{new_color}"
 
-        if "\\3c" in text:
-            text = re.sub(r'\\3c&H[0-9A-Fa-f]{6}&', color_tag, text)
-        else:
-            if text.startswith('{'):
-                bracket_end = text.find('}')
-                if bracket_end != -1:
-                    text = text[:bracket_end] + color_tag + text[bracket_end:]
+        try:
+            if "\\3c" in text:
+                text = re.sub(r'\\3c&H[0-9A-Fa-f]{6}&', lambda m: color_tag, text)
             else:
-                text = '{' + color_tag + '}' + text
+                if text.startswith('{'):
+                    bracket_end = text.find('}')
+                    if bracket_end != -1:
+                        text = text[:bracket_end] + color_tag + text[bracket_end:]
+                    else:
+                        text = '{' + color_tag + '}' + text
+                else:
+                    text = '{' + color_tag + '}' + text
 
-        return text
+            return text
 
+        except Exception as e:
+            self.logger.error(f"Error updating dialogue text: {str(e)}")
+            return text  # 返回原始文本，以防出错
+        
     def save(self, output_path: str):
         try:
             with codecs.open(output_path, 'w', encoding='utf-8-sig') as f:
