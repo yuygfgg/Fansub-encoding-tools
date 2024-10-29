@@ -1,6 +1,6 @@
 # Fansub-encoding-tools
 
-Some useful scripts for encoders of fansub groups
+Some useless scripts.
 
 ```
 organize.sh - A file organizor, useful when you have 12 (or even worse, 24) videos, each 2 subtitles and tens of subsetted fonts (hundereds in total) to deal with.
