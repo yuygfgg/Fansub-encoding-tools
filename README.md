@@ -1,4 +1,4 @@
-# Fansub-encoding-tools
+# Fansub-scripts
 
 Some useless scripts.
 
