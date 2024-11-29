@@ -11,5 +11,5 @@ BDencode.py - An encoding/organizing task manager with simple GUI. Handles the w
 
 pgs_ass_color.py - A script coloring Ass subtitles base on PGS subs, comes with simple GUI.
 
-tee.pt - A script to run multiple encoding commands simultaneously, only pre-processing once.
+tee.py - A script to run multiple encoding commands simultaneously, only pre-processing once.
 ```
