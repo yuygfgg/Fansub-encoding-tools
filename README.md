@@ -10,4 +10,6 @@ part_reencode.py - A video partial re-encoder. It re-encodes only part of the vi
 BDencode.py - An encoding/organizing task manager with simple GUI. Handles the whole encoding process from m2ts/mkv to final product, including vpy generation, audio encoding, ass fonts subseting and so on.
 
 pgs_ass_color.py - A script coloring Ass subtitles base on PGS subs, comes with simple GUI.
+
+tee.pt - A script to run multiple encoding commands simultaneously, only pre-processing once.
 ```
